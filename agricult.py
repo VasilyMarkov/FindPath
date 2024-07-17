@@ -181,7 +181,6 @@ grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(0))
 lines = np.array(grid.intersect_points)
 points = sort(lines)
 
-
 local_planner = Dubins(radius=10, point_separation=.5)
 env = StaticEnvironment((250, 250), None, field.inner_field.raw())
 rrt = RRT(env)
@@ -198,20 +197,7 @@ for i in range(len(points)-1):
 print(len(paths), len(points))
 
 
-#     first = lines[i]
-#     second = lines[len(lines)-i-1]
-#     start = first[1]
-# points = [grid.intersect_points[0][0], grid.intersect_points[4][1]]
-# start = (grid.intersect_points[0][1][0], grid.intersect_points[0][1][1], np.deg2rad(135))
-# end = (grid.intersect_points[4][1][0], grid.intersect_points[4][1][1], np.deg2rad(180+135))
-
-
-
-
-
 # env = StaticEnvironment((250, 250), None, field.inner_field.raw())
-
-
 
 # start = [0.0, 0.0, np.deg2rad(0.0)]
 # end = [20.0, 20.0, np.deg2rad(90)]
@@ -233,7 +219,22 @@ ax = fig.add_subplot()
 field.plot(ax, color = 'red')
 grid.plot(ax, color = 'blue')
 
+for i in range(len(points)-1):
+    if i % 2 == 0:
+        plt.plot([points[i][0], points[i+1][0]], [points[i][1], points[i+1][1]], color='b')
 
 for path in paths:
-    ax.plot(path[:, 0], path[:, 1])
+    ax.plot(path[:, 0], path[:, 1], color='b')
+
+for i in range(len(points)-1):
+    x1 = points[i][0]
+    y1 = points[i][1]
+    x2 = points[i+1][0]
+    y2 = points[i+1][1]
+    ax.scatter(x1, y1, color = 'black', linewidths=1)
+    ax.scatter(x2, y2, color = 'black', linewidths=1)
+    ax.annotate(str(i), (x1, y1))
+    ax.annotate(str(i+1), (x2, y2))
+
+
 plt.show()
