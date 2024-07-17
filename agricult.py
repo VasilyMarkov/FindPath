@@ -179,10 +179,25 @@ field = Field([
 grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(0))
 
 lines = np.array(grid.intersect_points)
-# points = lines.reshape(lines.shape[0]*2, 2)
 points = sort(lines)
-print(points)
-# for i in range(len(lines)):
+
+
+local_planner = Dubins(radius=10, point_separation=.5)
+env = StaticEnvironment((250, 250), None, field.inner_field.raw())
+rrt = RRT(env)
+paths = []
+cnt = 0
+for i in range(len(points)-1):
+    if i%2 != 0:
+        start = (points[i][0], points[i][1], np.deg2rad(270 if cnt % 2 else 90))
+        end = (points[i+1][0], points[i+1][1], np.deg2rad(90 if cnt % 2 else 270))
+        path = local_planner.dubins_path(start, end)
+        paths.append(path)
+        cnt = cnt + 1
+
+print(len(paths), len(points))
+
+
 #     first = lines[i]
 #     second = lines[len(lines)-i-1]
 #     start = first[1]
@@ -192,11 +207,10 @@ print(points)
 
 
 
-# local_planner = Dubins(radius=10, point_separation=.5)
+
 
 # env = StaticEnvironment((250, 250), None, field.inner_field.raw())
-# rrt = RRT(env)
-# path = local_planner.dubins_path(start, end)
+
 
 
 # start = [0.0, 0.0, np.deg2rad(0.0)]
@@ -218,5 +232,8 @@ fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot()
 field.plot(ax, color = 'red')
 grid.plot(ax, color = 'blue')
-# ax.plot(path[:, 0], path[:, 1])
+
+
+for path in paths:
+    ax.plot(path[:, 0], path[:, 1])
 plt.show()
