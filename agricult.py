@@ -134,9 +134,6 @@ class Grid(Plotable):
         return points
 
     def plot(self, plt, *args, **kwargs):
-        # for i in range(len(self.lines)):
-        #     seg = Segment(Point(self.lines[i].xy[0][0], self.lines[i].xy[1][0]), Point(self.lines[i].xy[0][1], self.lines[i].xy[1][1]))
-        #     seg.plot(plt, *args, **kwargs)
         assert(len(self.intersect_points) > 0)
         for point in self.intersect_points:
             plt.scatter(point[0][0], point[0][1], *args, **kwargs)
@@ -174,9 +171,9 @@ field = Field([
     Point(0,200),
     Point(200,200), 
     Point(200,0)
-            ], 40)
+            ], 20)
 
-grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(0))
+grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(45))
 
 lines = np.array(grid.intersect_points)
 points = sort(lines)
@@ -188,30 +185,11 @@ paths = []
 cnt = 0
 for i in range(len(points)-1):
     if i%2 != 0:
-        start = (points[i][0], points[i][1], np.deg2rad(270 if cnt % 2 else 90))
-        end = (points[i+1][0], points[i+1][1], np.deg2rad(90 if cnt % 2 else 270))
+        start = (points[i][0], points[i][1], np.deg2rad(np.rad2deg(grid.bearing)+270 if cnt % 2 else np.rad2deg(grid.bearing)+90))
+        end = (points[i+1][0], points[i+1][1], np.deg2rad(np.rad2deg(grid.bearing)+90 if cnt % 2 else np.rad2deg(grid.bearing)+270))
         path = local_planner.dubins_path(start, end)
         paths.append(path)
         cnt = cnt + 1
-
-print(len(paths), len(points))
-
-
-# env = StaticEnvironment((250, 250), None, field.inner_field.raw())
-
-# start = [0.0, 0.0, np.deg2rad(0.0)]
-# end = [20.0, 20.0, np.deg2rad(90)]
-# obstacleList = [
-#         (10, 10, 2)
-#         # (3, 6, 2),
-#         # (3, 8, 2),
-#         # (3, 10, 2),
-#         # (7, 5, 2),
-#         # (9, 5, 2)
-# ]  # [x,y,size(radius)]
-# rrtstar_dubins = RRTStarDubins(start, end, rand_area=[250, 250], 
-#                                obstacle_list=obstacleList, robot_radius=10, max_iter=200, goal_sample_rate=20)
-# path = np.array(rrtstar_dubins.planning(animation=False))
 
 
 fig = plt.figure(figsize=(8, 8))
