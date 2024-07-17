@@ -2,13 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import shapely.geometry as sg
 from shapely.geometry import Polygon, MultiPoint
-from shapely.ops import unary_union
 from scipy.spatial.distance import pdist, squareform
 from shapely.geometry import LineString
 from shapely.affinity import rotate, translate, scale
 import math
 from abc import ABC, abstractmethod
-from typing import TypeVar, Type
+from dubins import Dubins
+from environment import StaticEnvironment
+from rrt import RRT
+from rrt_star_dubins import RRTStarDubins
 
 class Plotable(ABC):
     @abstractmethod
@@ -90,13 +92,12 @@ class Field(Shape):
         points = [point.raw() for point in self.points]
         poly = sg.Polygon(points)
         inner = poly.buffer(-self.widthOfOverlap, join_style=2)
-        inner_points = [Point(coord[0], coord[1]) for coord in list(inner.boundary.coords)]
+        inner_points = [Point(coord[0], coord[1]) for coord in list(inner.boundary.coords)][:-1]
         self.inner_field = Shape(inner_points)
-
-
+        
 class Grid(Plotable):
     intersect_points = []
-    
+
     def __init__(self, field: Field, start_point: Point, bearing: float = 0):
         self.field  = field
         self.start_point  = start_point
@@ -119,10 +120,8 @@ class Grid(Plotable):
             translated_line = translate(rotated_line, dx, dy)
             lines.append(translated_line)
         self.lines = lines
-        self.__intersection(np.array(self.field.raw()), lines[0])
-        intersects = []
-        for line in lines:
-            intersects.append(self.__intersection(np.array(self.field.raw()), line))
+
+        intersects = [self.__intersection(np.array(self.field.raw()), line) for line in lines]
         intersects = [point for point in intersects if len(point) == 2]
         self.intersect_points = intersects
 
@@ -143,6 +142,30 @@ class Grid(Plotable):
             plt.scatter(point[0][0], point[0][1], *args, **kwargs)
             plt.scatter(point[1][0], point[1][1], *args, **kwargs)
 
+
+def sort(lines):
+    output = np.zeros((lines.shape[0]*2, lines.shape[1]))
+    cnt = 0
+    for i in range(int(lines.shape[0])):
+        first = lines[i]
+        second = lines[len(lines)-i-1]
+        if i == len(lines)-i-1:
+            output[cnt] = first[0]
+            cnt = cnt + 1 
+            output[cnt] = first[1]
+            cnt = cnt + 1 
+            return output
+        output[cnt] = first[0]
+        cnt = cnt + 1 
+        output[cnt] = first[1]
+        cnt = cnt + 1 
+        output[cnt] = second[1]
+        cnt = cnt + 1 
+        output[cnt] = second[0]
+        cnt = cnt + 1 
+    return output
+        
+
 start = Point(0,0)
 end = Point(2,2)
 
@@ -151,13 +174,49 @@ field = Field([
     Point(0,200),
     Point(200,200), 
     Point(200,0)
-            ], 10)
+            ], 40)
 
-grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(45))
+grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(0))
+
+lines = np.array(grid.intersect_points)
+# points = lines.reshape(lines.shape[0]*2, 2)
+points = sort(lines)
+print(points)
+# for i in range(len(lines)):
+#     first = lines[i]
+#     second = lines[len(lines)-i-1]
+#     start = first[1]
+# points = [grid.intersect_points[0][0], grid.intersect_points[4][1]]
+# start = (grid.intersect_points[0][1][0], grid.intersect_points[0][1][1], np.deg2rad(135))
+# end = (grid.intersect_points[4][1][0], grid.intersect_points[4][1][1], np.deg2rad(180+135))
+
+
+
+# local_planner = Dubins(radius=10, point_separation=.5)
+
+# env = StaticEnvironment((250, 250), None, field.inner_field.raw())
+# rrt = RRT(env)
+# path = local_planner.dubins_path(start, end)
+
+
+# start = [0.0, 0.0, np.deg2rad(0.0)]
+# end = [20.0, 20.0, np.deg2rad(90)]
+# obstacleList = [
+#         (10, 10, 2)
+#         # (3, 6, 2),
+#         # (3, 8, 2),
+#         # (3, 10, 2),
+#         # (7, 5, 2),
+#         # (9, 5, 2)
+# ]  # [x,y,size(radius)]
+# rrtstar_dubins = RRTStarDubins(start, end, rand_area=[250, 250], 
+#                                obstacle_list=obstacleList, robot_radius=10, max_iter=200, goal_sample_rate=20)
+# path = np.array(rrtstar_dubins.planning(animation=False))
+
 
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot()
 field.plot(ax, color = 'red')
 grid.plot(ax, color = 'blue')
-# field.innerField.plot(ax, color = 'blue')
+# ax.plot(path[:, 0], path[:, 1])
 plt.show()
