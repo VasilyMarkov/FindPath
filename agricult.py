@@ -83,24 +83,26 @@ class Shape(Plotable):
 
 
 class Field(Shape):
-    def __init__(self, points: list, widthOfOverlap: float):
+    def __init__(self, points: list, width):
         Shape.__init__(self, points)
-        self.widthOfOverlap = widthOfOverlap
+        self.width = width
         self.__innerField() 
 
     def __innerField(self):
         points = [point.raw() for point in self.points]
         poly = sg.Polygon(points)
-        inner = poly.buffer(-self.widthOfOverlap, join_style=2)
+        inner = poly.buffer(-self.width, join_style=2) #create inner bound field
         inner_points = [Point(coord[0], coord[1]) for coord in list(inner.boundary.coords)][:-1]
         self.inner_field = Shape(inner_points)
         
+
 class Grid(Plotable):
     intersect_points = []
 
-    def __init__(self, field: Field, start_point: Point, bearing: float = 0):
+    def __init__(self, field: Field, start: Point, width, bearing: float = 0):
         self.field  = field
-        self.start_point  = start_point
+        self.start_point  = start
+        self.width = width
         self.bearing = bearing
         self.__generate()
 
@@ -113,10 +115,10 @@ class Grid(Plotable):
         rotated_line = scale(rotated_line, xfact=factor[0], yfact=factor[1])
 
         lines = []
-        num_lines = int(field.diameter/field.widthOfOverlap)
+        num_lines = int(self.field.diameter/self.width)
         for i in range(num_lines):
-            dx = field.widthOfOverlap * i * math.cos(self.bearing)
-            dy = field.widthOfOverlap * i * math.sin(self.bearing)
+            dx = self.width * i * math.cos(self.bearing)
+            dy = self.width * i * math.sin(self.bearing)
             translated_line = translate(rotated_line, dx, dy)
             lines.append(translated_line)
         self.lines = lines
@@ -163,56 +165,96 @@ def sort(lines):
     return output
         
 
-start = Point(0,0)
-end = Point(2,2)
+class RoundTrajectory:
 
-field = Field([
-    Point(0,0), 
-    Point(0,200),
-    Point(200,200), 
-    Point(200,0)
-            ], 20)
+    def __init__(self, zone: list, start, width, bearing, radius, fromCenter = False):
+        self.zone = Field([Point(point[0], point[1]) for point in zone], width)
+        self.start = Point(start[0], start[1])
+        self.width = width
+        self.bearing = bearing
+        self.fromCenter = fromCenter
+        self.radius = radius
+        self.grid = Grid(field=self.zone.inner_field, start=self.start, width=self.width, bearing=np.deg2rad(bearing))
 
-grid = Grid(field.inner_field, Point(15, 10), np.deg2rad(45))
+    def __centerSort():
+        ...
 
-lines = np.array(grid.intersect_points)
-points = sort(lines)
+    def __outerEndSort(self,lines):
+        lines = np.array(lines)
+        output = np.zeros((lines.shape[0]*2, lines.shape[1]))
+        cnt = 0
+        for i in range(int(lines.shape[0])):
+            first = lines[i]
+            second = lines[len(lines)-i-1]
+            if i == len(lines)-i-1:
+                output[cnt] = first[0]
+                cnt = cnt + 1 
+                output[cnt] = first[1]
+                cnt = cnt + 1 
+                return output
+            output[cnt] = first[0]
+            cnt = cnt + 1 
+            output[cnt] = first[1]
+            cnt = cnt + 1 
+            output[cnt] = second[1]
+            cnt = cnt + 1 
+            output[cnt] = second[0]
+            cnt = cnt + 1 
+        return output
 
-local_planner = Dubins(radius=10, point_separation=.5)
-env = StaticEnvironment((250, 250), None, field.inner_field.raw())
-rrt = RRT(env)
-paths = []
-cnt = 0
-for i in range(len(points)-1):
-    if i%2 != 0:
-        start = (points[i][0], points[i][1], np.deg2rad(np.rad2deg(grid.bearing)+270 if cnt % 2 else np.rad2deg(grid.bearing)+90))
-        end = (points[i+1][0], points[i+1][1], np.deg2rad(np.rad2deg(grid.bearing)+90 if cnt % 2 else np.rad2deg(grid.bearing)+270))
-        path = local_planner.dubins_path(start, end)
-        paths.append(path)
-        cnt = cnt + 1
+    def generateTrajectory(self):
+        
+        self.sorted_points = self.__outerEndSort(self.grid.intersect_points)
+
+        local_planner = Dubins(self.radius, point_separation=.5)
+        # env = StaticEnvironment((250, 250), None, rt.zone.inner_field.raw())
+        # rrt = RRT(env)
+        paths = []
+        cnt = 0
+        for i in range(len(self.sorted_points)-1):
+            if i%2 != 0:
+                start = (self.sorted_points[i][0], self.sorted_points[i][1], 
+                         np.deg2rad(np.rad2deg(self.bearing)+270 if cnt % 2 else np.rad2deg(self.bearing)+90))
+                end = (self.sorted_points[i+1][0], self.sorted_points[i+1][1], 
+                       np.deg2rad(np.rad2deg(self.bearing)+90 if cnt % 2 else np.rad2deg(self.bearing)+270))
+                path = local_planner.dubins_path(start, end)
+                paths.append(path)
+                cnt = cnt + 1
+        self.path = paths
+        return paths
+
+    def plot(self, plt):
+        self.zone.plot(ax, color = 'red')
+        self.grid.plot(ax, color = 'blue')
+        for i in range(len(self.sorted_points)-1):
+            if i % 2 == 0:
+                plt.plot([self.sorted_points[i][0], self.sorted_points[i+1][0]], 
+                         [self.sorted_points[i][1], self.sorted_points[i+1][1]], color='b')
+
+        for point in self.path:
+            ax.plot(point[:, 0], point[:, 1], color='b')
+
+        for i in range(len(self.sorted_points)-1):
+            x1 = self.sorted_points[i][0]
+            y1 = self.sorted_points[i][1]
+            x2 = self.sorted_points[i+1][0]
+            y2 = self.sorted_points[i+1][1]
+            ax.scatter(x1, y1, color = 'black', linewidths=1)
+            ax.scatter(x2, y2, color = 'black', linewidths=1)
+            ax.annotate(str(i), (x1, y1))
+            ax.annotate(str(i+1), (x2, y2))
+
+
+points = [[0,0], [0,200], [200,200], [200,0]]
+
+rt = RoundTrajectory(zone=points, start=(15,10), width=40, bearing=45, radius=10)
+
+paths = rt.generateTrajectory()
 
 
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot()
-field.plot(ax, color = 'red')
-grid.plot(ax, color = 'blue')
-
-for i in range(len(points)-1):
-    if i % 2 == 0:
-        plt.plot([points[i][0], points[i+1][0]], [points[i][1], points[i+1][1]], color='b')
-
-for path in paths:
-    ax.plot(path[:, 0], path[:, 1], color='b')
-
-for i in range(len(points)-1):
-    x1 = points[i][0]
-    y1 = points[i][1]
-    x2 = points[i+1][0]
-    y2 = points[i+1][1]
-    ax.scatter(x1, y1, color = 'black', linewidths=1)
-    ax.scatter(x2, y2, color = 'black', linewidths=1)
-    ax.annotate(str(i), (x1, y1))
-    ax.annotate(str(i+1), (x2, y2))
+rt.plot(ax)
 
 
 plt.show()
