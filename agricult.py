@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import shapely.geometry as sg
-from shapely.geometry import Polygon, MultiPoint
 from scipy.spatial.distance import pdist, squareform
 from shapely.geometry import LineString
 from shapely.affinity import rotate, translate, scale
@@ -11,6 +10,7 @@ from dubins import Dubins
 from environment import StaticEnvironment
 from rrt import RRT
 from rrt_star_dubins import RRTStarDubins
+import itertools
 
 class Plotable(ABC):
     @abstractmethod
@@ -62,7 +62,7 @@ class Shape(Plotable):
     
     def __find_diameter(self):
         inner_points = [point.raw() for point in self.points]
-        multipoint = MultiPoint(inner_points)
+        multipoint = sg.MultiPoint(inner_points)
         convex_hull = multipoint.convex_hull
         hull_coords = list(convex_hull.exterior.coords)
         distances = pdist(hull_coords)
@@ -100,11 +100,12 @@ class Field(Shape):
 class Grid(Plotable):
     intersect_points = []
 
-    def __init__(self, field: Field, start: Point, width, bearing: float = 0):
+    def __init__(self, field: Field, start: Point, width, bearing: float = 0, fromCenter = False):
         self.field  = field
         self.start_point  = start
         self.width = width
         self.bearing = bearing
+        self.fromCenter = fromCenter
         self.__generate()
 
     def __generate(self):
@@ -115,24 +116,40 @@ class Grid(Plotable):
         factor = 5*self.field.diameter/rotated_line.length, 5*self.field.diameter/rotated_line.length
         rotated_line = scale(rotated_line, xfact=factor[0], yfact=factor[1])
 
-        lines = []
-        num_lines = int(self.field.diameter/self.width)
-        print(self.field.diameter)
-        print(num_lines)
-        for i in range(num_lines):
-            dx = self.width * i * math.cos(self.bearing)
-            dy = self.width * i * math.sin(self.bearing)
-            translated_line = translate(rotated_line, dx, dy)
-            lines.append(translated_line)
-        self.lines = lines
+        self.__lineMultiply(rotated_line, self.fromCenter)
 
-        intersects = [self.__intersection(np.array(self.field.raw()), line) for line in lines]
+        intersects = [self.__intersection(np.array(self.field.raw()), line) for line in self.lines]
         intersects = [point for point in intersects if len(point) == 2]
         
         self.intersect_points = intersects
 
+    def __lineMultiply(self, line, fromCenter):
+        lines = []
+        if not fromCenter:
+            num_lines = int(self.field.diameter/self.width)
+            for i in range(num_lines):
+                print(i)
+                dx = self.width * i * math.cos(self.bearing)
+                dy = self.width * i * math.sin(self.bearing)
+                translated_line = translate(line, dx, dy)
+                lines.append(translated_line)
+        else:
+            num_lines = int(self.field.diameter/self.width)
+            for i in range(num_lines):
+                dx = self.width * i * math.cos(self.bearing)
+                dy = self.width * i * math.sin(self.bearing)
+                translated_line = translate(line, dx, dy)
+                lines.append(translated_line)
+                if i > 0:
+                    dx = self.width * -i * math.cos(self.bearing)
+                    dy = self.width * -i * math.sin(self.bearing)
+                    translated_line = translate(line, dx, dy)
+                    lines.append(translated_line)
+
+        self.lines = lines
+
     def __intersection(self, polygon, line):
-        polygon = Polygon(polygon)
+        polygon = sg.Polygon(polygon)
         intersection_points = []
         intersection = polygon.intersection(line)
         intersection_points.append(intersection)
@@ -156,19 +173,36 @@ class Grid(Plotable):
 class RoundTrajectory:
 
     def __init__(self, zone: list, start, width, bearing, radius, fromCenter = False):
+        
         self.zone = Field([Point(point[0], point[1]) for point in zone], width)
         self.start = Point(start[0], start[1])
         self.width = width
         self.bearing = bearing
         self.fromCenter = fromCenter
         self.radius = radius
-        self.grid = Grid(field=self.zone, start=self.start, width=self.width, bearing=np.deg2rad(bearing))
+        self.__assertions()
+        self.grid = Grid(field=self.zone, start=self.start, width=self.width, bearing=np.deg2rad(bearing), fromCenter=self.fromCenter)
 
-    def __centerSort():
-        ...
+    def __assertions(self):
+        polygon = sg.Polygon(self.zone.raw())
+        point = sg.Point(self.start.raw())
+        assert(point.within(polygon)) #Starting point inside the zone?
+
+    def __centerSort(self, lines):
+        lines = np.array(lines)
+        assert(lines.shape[0] > 0)
+        output = np.zeros((lines.shape[0]*2, lines.shape[1]))
+        cnt = 0
+        for i in range(lines.shape[0]):
+            output[cnt] = lines[i][i % 2]
+            cnt = cnt + 1 
+            output[cnt] = lines[i][(i+1) % 2]
+            cnt = cnt + 1 
+        return output
 
     def __outerEndSort(self, lines):
         lines = np.array(lines)
+        assert(lines.shape[0] > 0)
         output = np.zeros((lines.shape[0]*2, lines.shape[1]))
         cnt = 0
         size = int(lines.shape[0]/2) if lines.shape[0] % 2 == 0 else int(lines.shape[0]/2)+1
@@ -189,7 +223,10 @@ class RoundTrajectory:
 
     def generateTrajectory(self):
         
-        self.sorted_points = self.__outerEndSort(self.grid.intersect_points)
+        if self.fromCenter:
+            self.sorted_points = self.__centerSort(self.grid.intersect_points)
+        else:
+            self.sorted_points = self.__outerEndSort(self.grid.intersect_points)
 
         local_planner = Dubins(self.radius, point_separation=.5)
         # env = StaticEnvironment((250, 250), None, rt.zone.inner_field.raw())
@@ -235,7 +272,7 @@ class RoundTrajectory:
 
 points = [[0,0], [0,200], [200,200], [200,0]]
 
-rt = RoundTrajectory(zone=points, start=(15,10), width=40, bearing=45, radius=10)
+rt = RoundTrajectory(zone=points, start=(100,100), width=40, bearing=0, radius=10, fromCenter=True)
 
 paths = rt.generateTrajectory()
 
