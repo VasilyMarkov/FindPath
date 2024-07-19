@@ -86,14 +86,15 @@ class Field(Shape):
     def __init__(self, points: list, width):
         Shape.__init__(self, points)
         self.width = width
-        self.__innerField() 
+        # self.__innerField() 
+
 
     def __innerField(self):
         points = [point.raw() for point in self.points]
         poly = sg.Polygon(points)
         inner = poly.buffer(-self.width, join_style=2) #create inner bound field
         inner_points = [Point(coord[0], coord[1]) for coord in list(inner.boundary.coords)][:-1]
-        self.inner_field = Shape(inner_points)
+        # self.inner_field = Shape(inner_points)
         
 
 class Grid(Plotable):
@@ -116,6 +117,8 @@ class Grid(Plotable):
 
         lines = []
         num_lines = int(self.field.diameter/self.width)
+        print(self.field.diameter)
+        print(num_lines)
         for i in range(num_lines):
             dx = self.width * i * math.cos(self.bearing)
             dy = self.width * i * math.sin(self.bearing)
@@ -125,6 +128,7 @@ class Grid(Plotable):
 
         intersects = [self.__intersection(np.array(self.field.raw()), line) for line in lines]
         intersects = [point for point in intersects if len(point) == 2]
+        
         self.intersect_points = intersects
 
     def __intersection(self, polygon, line):
@@ -141,29 +145,13 @@ class Grid(Plotable):
             plt.scatter(point[0][0], point[0][1], *args, **kwargs)
             plt.scatter(point[1][0], point[1][1], *args, **kwargs)
 
-
-def sort(lines):
-    output = np.zeros((lines.shape[0]*2, lines.shape[1]))
-    cnt = 0
-    for i in range(int(lines.shape[0])):
-        first = lines[i]
-        second = lines[len(lines)-i-1]
-        if i == len(lines)-i-1:
-            output[cnt] = first[0]
-            cnt = cnt + 1 
-            output[cnt] = first[1]
-            cnt = cnt + 1 
-            return output
-        output[cnt] = first[0]
-        cnt = cnt + 1 
-        output[cnt] = first[1]
-        cnt = cnt + 1 
-        output[cnt] = second[1]
-        cnt = cnt + 1 
-        output[cnt] = second[0]
-        cnt = cnt + 1 
-    return output
-        
+        assert(len(self.lines) > 0)
+        for i in range(len(self.lines)):
+            x1 = self.lines[i].xy[0][0] 
+            y1 = self.lines[i].xy[1][0]
+            x2 = self.lines[i].xy[0][1] 
+            y2 = self.lines[i].xy[1][1]
+            plt.plot([x1, x2], [y1, y2], color = 'b')
 
 class RoundTrajectory:
 
@@ -174,32 +162,29 @@ class RoundTrajectory:
         self.bearing = bearing
         self.fromCenter = fromCenter
         self.radius = radius
-        self.grid = Grid(field=self.zone.inner_field, start=self.start, width=self.width, bearing=np.deg2rad(bearing))
+        self.grid = Grid(field=self.zone, start=self.start, width=self.width, bearing=np.deg2rad(bearing))
 
     def __centerSort():
         ...
 
-    def __outerEndSort(self,lines):
+    def __outerEndSort(self, lines):
         lines = np.array(lines)
         output = np.zeros((lines.shape[0]*2, lines.shape[1]))
         cnt = 0
-        for i in range(int(lines.shape[0])):
+        size = int(lines.shape[0]/2) if lines.shape[0] % 2 == 0 else int(lines.shape[0]/2)+1
+        for i in range(size):
             first = lines[i]
-            second = lines[len(lines)-i-1]
-            if i == len(lines)-i-1:
-                output[cnt] = first[0]
-                cnt = cnt + 1 
-                output[cnt] = first[1]
-                cnt = cnt + 1 
-                return output
             output[cnt] = first[0]
             cnt = cnt + 1 
             output[cnt] = first[1]
             cnt = cnt + 1 
-            output[cnt] = second[1]
-            cnt = cnt + 1 
-            output[cnt] = second[0]
-            cnt = cnt + 1 
+            if not (lines.shape[0] % 2 == 1 and i == size-1):
+                second = lines[lines.shape[0]-i-1]
+                output[cnt] = second[1]
+                cnt = cnt + 1 
+                output[cnt] = second[0]
+                cnt = cnt + 1 
+
         return output
 
     def generateTrajectory(self):
@@ -225,16 +210,15 @@ class RoundTrajectory:
 
     def plot(self, plt):
         self.zone.plot(ax, color = 'red')
-        self.grid.plot(ax, color = 'blue')
-        for i in range(len(self.sorted_points)-1):
+        for i in range(len(self.sorted_points)-1): #path ploting
             if i % 2 == 0:
                 plt.plot([self.sorted_points[i][0], self.sorted_points[i+1][0]], 
                          [self.sorted_points[i][1], self.sorted_points[i+1][1]], color='b')
 
-        for point in self.path:
+        for point in self.path: #dubins ploting
             ax.plot(point[:, 0], point[:, 1], color='b')
 
-        for i in range(len(self.sorted_points)-1):
+        for i in range(len(self.sorted_points)-1): #points ploting
             x1 = self.sorted_points[i][0]
             y1 = self.sorted_points[i][1]
             x2 = self.sorted_points[i+1][0]
@@ -243,6 +227,10 @@ class RoundTrajectory:
             ax.scatter(x2, y2, color = 'black', linewidths=1)
             ax.annotate(str(i), (x1, y1))
             ax.annotate(str(i+1), (x2, y2))
+
+        ax.scatter(self.sorted_points[0][0], self.sorted_points[0][1], color = 'g', linewidths=5)
+        ax.scatter(self.sorted_points[len(self.sorted_points)-1][0], self.sorted_points[len(self.sorted_points)-1][1], color = 'r', linewidths=5)
+
 
 
 points = [[0,0], [0,200], [200,200], [200,0]]
@@ -255,6 +243,6 @@ paths = rt.generateTrajectory()
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot()
 rt.plot(ax)
-
+# rt.grid.plot(ax)
 
 plt.show()
